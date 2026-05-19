@@ -1,0 +1,65 @@
+{
+  "_instructions": {
+    "what_is_this_file": "This file is the single source of truth for all TikTok Ads report jobs. It controls which reports are generated, when they run, and records the outcome of every run.",
+    "how_to_add_a_report": "Append a new object to the 'reports' array. Copy the structure of an existing entry. Give it a unique 'id' (lowercase, hyphens only). Set 'enabled' to true.",
+    "how_to_disable_a_report": "Set 'enabled' to false. Do not delete the entry.",
+    "how_to_reschedule": "Update the 'schedule' field using plain English. See 'schedule_format' below.",
+    "how_to_check_for_errors": "Look at the last entry in each report's 'runs' array. If 'status' is 'failed', read 'error' for a short summary, 'error_step' for which step failed (fetch / generate / upload), and 'error_detail' for the full error message.",
+    "never_do_this": "Never delete entries from a report's 'runs' array. Always append.",
+    "schedule_format": {
+      "description": "Write schedules in plain English. All times are Pacific Time.",
+      "examples": [
+        "hourly",
+        "daily at 9am",
+        "weekly on monday at 8am",
+        "weekly on friday at 5pm",
+        "monthly on the 1st at 9am"
+      ]
+    },
+    "required_fields": [
+      "id",
+      "label",
+      "schedule",
+      "advertiser_id",
+      "campaign_ids",
+      "date_range",
+      "template",
+      "output_dir",
+      "drive_folder_id",
+      "enabled"
+    ],
+    "field_reference": {
+      "id": "Unique identifier for this report. Use lowercase letters and hyphens only. Used in output filenames.",
+      "label": "Human-readable name shown in logs and the slide deck title.",
+      "schedule": "When to run this report. Plain English, Pacific Time. See schedule_format above.",
+      "advertiser_id": "TikTok Ads advertiser account ID.",
+      "campaign_ids": "List of TikTok campaign IDs to include. Use an empty array [] to include all campaigns under the advertiser.",
+      "date_range.start": "Start date for the data pull. Format: YYYY-MM-DD.",
+      "date_range.end": "End date for the data pull. Format: YYYY-MM-DD.",
+      "template": "Path to the PowerPoint template file, relative to the project root.",
+      "output_dir": "Directory where generated CSV and PPTX files are saved.",
+      "drive_folder_id": "Google Drive folder ID to upload the finished deck into.",
+      "enabled": "Set to true to run this report on schedule. Set to false to pause it."
+    }
+  },
+  "version": "1",
+  "reports": [
+    {
+      "_comment": "This is an example report. Edit it or add new ones below.",
+      "id": "weekly-brand-overview",
+      "label": "Weekly Brand Overview",
+      "schedule": "weekly on monday at 8am",
+      "advertiser_id": "YOUR_ADVERTISER_ID",
+      "campaign_ids": ["CAMPAIGN_ID_1", "CAMPAIGN_ID_2", "CAMPAIGN_ID_3"],
+      "date_range": {
+        "start": "2026-05-01",
+        "end": "2026-05-18"
+      },
+      "template": "templates/Performance_By_Objective_template.pptx",
+      "output_dir": "output/",
+      "drive_folder_id": "YOUR_GOOGLE_DRIVE_FOLDER_ID",
+      "enabled": false,
+      "runs": []
+    }
+  ]
+}

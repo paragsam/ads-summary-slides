@@ -1,0 +1,19 @@
+# Credentials
+.env
+
+# Generated output
+output/
+logs/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+dist/
+
+# macOS
+.DS_Store
+
+# Template lock files (PowerPoint temp files)
+~$*.pptx
