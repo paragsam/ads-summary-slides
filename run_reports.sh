@@ -27,7 +27,7 @@ fail() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] ✗ $*" >&2; }
 # ---------------------------------------------------------------------------
 check_deps() {
     local missing=()
-    for cmd in jq python3 gws; do
+    for cmd in jq python3; do
         command -v "$cmd" &>/dev/null || missing+=("$cmd")
     done
     if [[ ${#missing[@]} -gt 0 ]]; then
@@ -95,15 +95,29 @@ run_report() {
     drive_folder_id=$(jq_report "$id" ".drive_folder_id")
     campaign_ids=$(jq_report "$id" '.campaign_ids | join(" ")')
 
-    local datestamp triggered_at
-    datestamp=$(date '+%Y%m%d')
+    local triggered_at
     triggered_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
 
-    local base="${SCRIPT_DIR}/${output_dir}${id}_${datestamp}"
+    # Build filename-safe date range from flight dates e.g. 20260501-20260518
+    local start_slug end_slug flight_slug
+    start_slug=$(echo "$start" | tr -d '-')
+    end_slug=$(echo "$end"   | tr -d '-')
+    flight_slug="${start_slug}-${end_slug}"
+
+    # Build human-readable flight label for Drive title e.g. "May 1 - May 18, 2026"
+    local flight_label
+    flight_label=$(python3 -c "
+from datetime import datetime
+s = datetime.strptime('$start', '%Y-%m-%d')
+e = datetime.strptime('$end',   '%Y-%m-%d')
+print(f\"{s.strftime('%b %-d')} - {e.strftime('%b %-d, %Y')}\")
+")
+
+    local base="${SCRIPT_DIR}/${output_dir}${id}_${flight_slug}"
     local campaigns_json="${base}_campaigns.json"
     local creatives_json="${base}_creatives.json"
     local pptx_path="${base}.pptx"
-    local drive_title="${label} — $(date '+%B %-d, %Y')"
+    local drive_title="${label} — ${flight_label}"
 
     log "▶  Report: $label ($id)"
 
@@ -181,22 +195,21 @@ run_report() {
     rm -f "$gen_stderr"
     ok "PPTX generated → ${pptx_path##*/}"
 
-    # ── Step 3: Upload to Google Drive ────────────────────────────────────
-    step "Step 3/3 — Uploading to Google Drive..."
-    local upload_stderr upload_stdout drive_url
+    # ── Step 3: Upload ────────────────────────────────────────────────────
+    step "Step 3/3 — Uploading..."
+    local upload_stderr drive_url
     upload_stderr=$(mktemp)
-    upload_stdout=$(mktemp)
 
-    if ! gws drive files create \
-            --upload "$pptx_path" \
-            --name "$drive_title" \
-            --parent "$drive_folder_id" \
-            >"$upload_stdout" 2>"$upload_stderr"; then
+    if ! drive_url=$("$SCRIPT_DIR/upload_to_google_drive.sh" \
+            --file "$pptx_path" \
+            --folder-id "$drive_folder_id" \
+            --title "$drive_title" \
+            2>"$upload_stderr"); then
 
         local err
         err=$(cat "$upload_stderr")
 
-        fail "STEP FAILED: gws drive files create"
+        fail "STEP FAILED: upload_to_google_drive.sh"
         fail "  Report  : $label"
         fail "  Error   : $err"
         fail "  Note    : PPTX saved locally at $pptx_path"
@@ -205,13 +218,12 @@ run_report() {
             --arg t "$triggered_at" --arg e "$err" \
             --arg cs "$campaigns_json" --arg cr "$creatives_json" --arg pp "$pptx_path" \
             '{triggered_at:$t,status:"failed",error_step:"upload",error:$e,error_detail:$e,campaigns_json:$cs,creatives_json:$cr,pptx_path:$pp,drive_url:null}')"
-        rm -f "$upload_stderr" "$upload_stdout"
+        rm -f "$upload_stderr"
         return 1
     fi
 
-    drive_url=$(grep -oP 'https://[^\s]+' "$upload_stdout" | head -1 || echo "")
-    rm -f "$upload_stderr" "$upload_stdout"
-    ok "Uploaded to Drive: ${drive_url:-'(URL not captured)'}"
+    rm -f "$upload_stderr"
+    ok "Uploaded: ${drive_url:-'(URL not captured)'}"
 
     # ── Success ───────────────────────────────────────────────────────────
     update_last_run "$id" "$(jq -n \

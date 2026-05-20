@@ -135,7 +135,7 @@ ads-summary-slides/
 ├── run_reports.sh            # Main orchestrator (coming soon)
 ├── fetch_tiktok_data.py      # Step 1: TikTok API → JSON
 ├── generate_pptx.py          # Step 2: JSON → PPTX
-├── upload_to_drive.sh        # Step 3: PPTX → Google Drive (coming soon)
+├── upload_to_google_drive.sh # Step 3: PPTX → Google Drive
 ├── templates/                # Branded PPTX templates (1–3 campaigns)
 ├── output/                   # Generated files (gitignored)
 ├── docs/                     # Design documentation
