@@ -70,9 +70,10 @@ templates/
 
 ### 6. Configure your reports
 
-Edit `reports.json` to add your reports. The file is self-documented — open it and follow the `_instructions` section at the top.
+Copy `reports.json.example` to `reports.json` and fill in your values. The file is self-documented — follow the `_instructions` section at the top.
 
 ```bash
+cp reports.json.example reports.json
 nano reports.json
 ```
 
@@ -131,7 +132,8 @@ crontab -e
 
 ```
 ads-summary-slides/
-├── reports.json              # Report queue and run history
+├── reports.json              # Report queue and run history (gitignored — copy from .example)
+├── reports.json.example      # Template with placeholder values
 ├── run_reports.sh            # Main orchestrator (coming soon)
 ├── fetch_tiktok_data.py      # Step 1: TikTok API → JSON
 ├── generate_pptx.py          # Step 2: JSON → PPTX

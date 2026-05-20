@@ -1,6 +1,10 @@
 # Credentials
 .env
 
+# Live report config (contains real advertiser/campaign/folder IDs and run history)
+# Copy reports.json.example → reports.json and fill in your values
+reports.json
+
 # Generated output — keep the directory but ignore its contents
 output/*
 !output/.gitkeep
