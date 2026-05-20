@@ -5,6 +5,7 @@
     "how_to_disable_a_report": "Set 'enabled' to false. Do not delete the entry.",
     "how_to_reschedule": "Update the 'schedule' field using plain English. See 'schedule_format' below.",
     "how_to_check_for_errors": "Look at the last entry in each report's 'runs' array. If 'status' is 'failed', read 'error' for a short summary, 'error_step' for which step failed (fetch / generate / upload), and 'error_detail' for the full error message.",
+    "template_selection": "The PPTX template is chosen automatically based on the number of campaigns in 'campaign_ids'. Templates live in the templates/ directory and are named Brand_Objective_1_campaign.pptx through Brand_Objective_5_campaign.pptx.",
     "runs_field_reference": {
       "triggered_at": "ISO timestamp of when this run started.",
       "status": "success | failed | running",
@@ -34,7 +35,6 @@
       "advertiser_id",
       "campaign_ids",
       "date_range",
-      "template",
       "output_dir",
       "drive_folder_id",
       "enabled"
@@ -44,10 +44,9 @@
       "label": "Human-readable name shown in logs and the slide deck title.",
       "schedule": "When to run this report. Plain English, Pacific Time. See schedule_format above.",
       "advertiser_id": "TikTok Ads advertiser account ID.",
-      "campaign_ids": "List of TikTok campaign IDs to include. Use an empty array [] to include all campaigns under the advertiser.",
+      "campaign_ids": "List of TikTok campaign IDs to include (1–5). The number of campaigns determines which template is used automatically. Use an empty array [] to include all campaigns under the advertiser.",
       "date_range.start": "Start date for the data pull. Format: YYYY-MM-DD.",
       "date_range.end": "End date for the data pull. Format: YYYY-MM-DD.",
-      "template": "Path to the PowerPoint template file, relative to the project root.",
       "output_dir": "Directory where generated JSON data files and PPTX files are saved.",
       "drive_folder_id": "Google Drive folder ID to upload the finished deck into.",
       "enabled": "Set to true to run this report on schedule. Set to false to pause it."
@@ -66,7 +65,6 @@
         "start": "2026-05-01",
         "end": "2026-05-18"
       },
-      "template": "templates/Performance_By_Objective_template.pptx",
       "output_dir": "output/",
       "drive_folder_id": "YOUR_GOOGLE_DRIVE_FOLDER_ID",
       "enabled": false,

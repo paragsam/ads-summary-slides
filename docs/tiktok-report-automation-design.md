@@ -42,7 +42,7 @@ cron (every 15 min)
         "start": "2026-05-01",
         "end": "2026-05-18"
       },
-      "template": "templates/Performance_By_Objective_template.pptx",
+      "template": "templates/Traffic_Objective_3_campaign_template.pptx",
       "output_dir": "output/",
       "drive_folder_id": "1AbCdEfGhIjKlMnOpQrStUvWx",
       "enabled": true,
@@ -186,7 +186,7 @@ TIKTOK_ACCESS_TOKEN
 ### Responsibilities
 
 - Read the two CSVs produced by the fetcher
-- Load `Performance_By_Objective_template.pptx`
+- Load `Traffic_Objective_3_campaign_template.pptx`
 - Generate the output deck:
   - **Slide 1** — Performance By Objective (one column per campaign objective)
   - **Slides 2–4** — Performance By Creative, one slide per campaign objective (cloned from template Slide 2), showing top 5 creatives by cost
@@ -199,7 +199,7 @@ TIKTOK_ACCESS_TOKEN
 python generate_pptx.py \
   --campaigns output/weekly-brand-overview_20260519_campaigns.json \
   --creatives output/weekly-brand-overview_20260519_creatives.json \
-  --template templates/Performance_By_Objective_template.pptx \
+  --template templates/Traffic_Objective_3_campaign_template.pptx \
   --start 2026-05-01 \
   --end 2026-05-18 \
   --out output/weekly-brand-overview_20260519.pptx
@@ -344,7 +344,7 @@ project/
 ├── generate_pptx.py                           # Step 2: CSV → PPTX
 ├── upload_to_drive.sh                         # Step 3: PPTX → Google Drive
 ├── templates/
-│   └── Performance_By_Objective_template.pptx
+│   └── Traffic_Objective_3_campaign_template.pptx
 ├── output/                                    # Generated JSON data files and PPTXs
 │   ├── weekly-brand-overview_20260519_campaigns.json
 │   ├── weekly-brand-overview_20260519_creatives.json
@@ -371,7 +371,7 @@ project/
 |---|----------|----------|
 | 1 | TikTok auth | Long-lived app-level access token stored in `.env` |
 | 2 | Date range format | Explicit static `YYYY-MM-DD` dates only |
-| 3 | PPTX template | `Performance_By_Objective_template.pptx` (existing) |
+| 3 | PPTX template | `Traffic_Objective_3_campaign_template.pptx` (existing) |
 | 4 | Failure alerting | Write `error` + `error_detail` to `reports.json`; OpenClaw scans for failures |
 | 5 | Drive upload tool | `gws drive files create --upload` |
 | 6 | Campaign columns | Grouped by `objective_type` pulled from TikTok API |
