@@ -1,8 +1,9 @@
 # Credentials
 .env
 
-# Generated output
-output/
+# Generated output — keep the directory but ignore its contents
+output/*
+!output/.gitkeep
 logs/
 
 # Python
@@ -14,6 +15,7 @@ dist/
 
 # macOS
 .DS_Store
+**/.DS_Store
 
 # Template lock files (PowerPoint temp files)
 ~$*.pptx
