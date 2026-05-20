@@ -82,7 +82,7 @@ Key fields per report:
 |-------|---------|-------------|
 | `id` | `"weekly-brand-report"` | Unique slug, used in filenames |
 | `schedule` | `"weekly on monday at 8am"` | Plain English, Pacific Time |
-| `advertiser_id` | `"YOUR_ADVERTISER_ID"` | TikTok advertiser account ID |
+| `advertiser_id` | `"1234567890123456789"` | TikTok advertiser account ID |
 | `campaign_ids` | `["111", "222"]` | 1–3 campaign IDs |
 | `date_range` | `{"start": "2026-05-01", "end": "2026-05-18"}` | Date range for data pull |
 | `drive_folder_id` | `"1AbCdEf..."` | Google Drive folder ID |
