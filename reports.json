@@ -5,6 +5,17 @@
     "how_to_disable_a_report": "Set 'enabled' to false. Do not delete the entry.",
     "how_to_reschedule": "Update the 'schedule' field using plain English. See 'schedule_format' below.",
     "how_to_check_for_errors": "Look at the last entry in each report's 'runs' array. If 'status' is 'failed', read 'error' for a short summary, 'error_step' for which step failed (fetch / generate / upload), and 'error_detail' for the full error message.",
+    "runs_field_reference": {
+      "triggered_at": "ISO timestamp of when this run started.",
+      "status": "success | failed | running",
+      "campaigns_json": "Path to the generated campaigns JSON data file.",
+      "creatives_json": "Path to the generated creatives JSON data file.",
+      "pptx_path": "Path to the generated PPTX file.",
+      "drive_url": "Google Drive URL of the uploaded deck.",
+      "error": "One-line error summary (null on success).",
+      "error_step": "Which step failed: fetch | generate | upload (null on success).",
+      "error_detail": "Full error message or stack trace excerpt (null on success)."
+    },
     "never_do_this": "Never delete entries from a report's 'runs' array. Always append.",
     "schedule_format": {
       "description": "Write schedules in plain English. All times are Pacific Time.",
@@ -37,7 +48,7 @@
       "date_range.start": "Start date for the data pull. Format: YYYY-MM-DD.",
       "date_range.end": "End date for the data pull. Format: YYYY-MM-DD.",
       "template": "Path to the PowerPoint template file, relative to the project root.",
-      "output_dir": "Directory where generated CSV and PPTX files are saved.",
+      "output_dir": "Directory where generated JSON data files and PPTX files are saved.",
       "drive_folder_id": "Google Drive folder ID to upload the finished deck into.",
       "enabled": "Set to true to run this report on schedule. Set to false to pause it."
     }

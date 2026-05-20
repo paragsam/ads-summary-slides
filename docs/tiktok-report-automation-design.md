@@ -102,7 +102,7 @@ cron (every 15 min)
 - Accept advertiser ID, campaign ID list, and date range as CLI arguments
 - Fetch per-campaign metrics **and** campaign details (name, objective type) from the TikTok Marketing API
 - Fetch per-creative metrics scoped to each campaign
-- Write a structured CSV to a specified output path
+- Write structured JSON to a specified output path
 - Print a one-line JSON error to stderr and exit non-zero on failure
 
 ### Interface
@@ -113,28 +113,63 @@ python fetch_tiktok_data.py \
   --campaign-ids 111 222 333 \
   --start 2026-05-01 \
   --end 2026-05-18 \
-  --out output/weekly-brand-overview_20260519.csv
+  --out output/weekly-brand-overview_20260519.json
 ```
 
-### Output CSV — Campaign-level rows
+### Output JSON — `<stem>_campaigns.json`
 
-```
-date, campaign_id, campaign_name, objective_type,
-impressions, clicks, ctr, spend, cpm, cpc,
-reach, vtr, vtr_6s, engagement_rate, conversions, roas
+One object per campaign, totals aggregated across the full date range:
+
+```json
+[
+  {
+    "campaign_id": "...",
+    "campaign_name": "...",
+    "objective_type": "TRAFFIC",
+    "spend": "34418.68",
+    "impressions": "9823480",
+    "cpm": "3.50",
+    "reach": "1622889",
+    "clicks": "49857",
+    "ctr": "0.51",
+    "cpc": "0.69",
+    "vtr": "99.36%",
+    "vtr_6s": "2.49%",
+    "engagement_rate": "1.24",
+    "conversions": "232",
+    "landing_page_views": "9505"
+  }
+]
 ```
 
 `objective_type` is the raw TikTok API value (e.g. `REACH`, `VIDEO_VIEWS`, `TRAFFIC`) and is used downstream to group columns in the PPTX.
 
-### Output CSV — Creative-level rows (appended or separate file)
+### Output JSON — `<stem>_creatives.json`
 
-```
-campaign_id, campaign_name, objective_type,
-creative_id, creative_name,
-impressions, clicks, ctr, spend, cpm, cpc, vtr, vtr_6s, engagement_rate
+One object per ad/creative, totals aggregated across the full date range:
+
+```json
+[
+  {
+    "campaign_id": "...",
+    "campaign_name": "...",
+    "objective_type": "TRAFFIC",
+    "ad_id": "...",
+    "ad_name": "Claire and Peter Spark Ad",
+    "spend": "6227.36",
+    "impressions": "1806756",
+    "cpm": "3.45",
+    "clicks": "8486",
+    "ctr": "0.47",
+    "cpc": "0.73",
+    "vtr": "98.83%",
+    "vtr_6s": "2.51%",
+    "engagement_rate": "1.18"
+  }
+]
 ```
 
-The fetcher writes two CSVs: `<stem>_campaigns.csv` and `<stem>_creatives.csv`.
+The fetcher writes two JSON files: `<stem>_campaigns.json` and `<stem>_creatives.json`.
 
 ### Credentials (env vars, loaded from `.env`)
 
@@ -162,8 +197,8 @@ TIKTOK_ACCESS_TOKEN
 
 ```bash
 python generate_pptx.py \
-  --campaigns output/weekly-brand-overview_20260519_campaigns.csv \
-  --creatives output/weekly-brand-overview_20260519_creatives.csv \
+  --campaigns output/weekly-brand-overview_20260519_campaigns.json \
+  --creatives output/weekly-brand-overview_20260519_creatives.json \
   --template templates/Performance_By_Objective_template.pptx \
   --start 2026-05-01 \
   --end 2026-05-18 \
@@ -310,9 +345,9 @@ project/
 ├── upload_to_drive.sh                         # Step 3: PPTX → Google Drive
 ├── templates/
 │   └── Performance_By_Objective_template.pptx
-├── output/                                    # Generated CSVs and PPTXs
-│   ├── weekly-brand-overview_20260519_campaigns.csv
-│   ├── weekly-brand-overview_20260519_creatives.csv
+├── output/                                    # Generated JSON data files and PPTXs
+│   ├── weekly-brand-overview_20260519_campaigns.json
+│   ├── weekly-brand-overview_20260519_creatives.json
 │   └── weekly-brand-overview_20260519.pptx
 └── logs/                                      # Symlink target for cron log
 ```
