@@ -4,7 +4,8 @@
 # Generated output — keep the directory but ignore its contents
 output/*
 !output/.gitkeep
-logs/
+logs/*
+!logs/.gitkeep
 
 # Python
 __pycache__/
