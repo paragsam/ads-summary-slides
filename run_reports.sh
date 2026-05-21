@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 # run_reports.sh — Orchestrate the TikTok Ads report pipeline.
 #
+# Runs every hour via cron. Checks the expanded_schedule in reports.json
+# to determine which reports are due, then runs fetch → generate → upload.
+#
 # Usage:
-#   ./run_reports.sh                        # run reports due now per their schedule
+#   ./run_reports.sh                        # run reports due now per expanded_schedule
 #   ./run_reports.sh --all                  # run all enabled reports regardless of schedule
 #   ./run_reports.sh --report-id <id>       # run one specific report by ID
 
@@ -80,20 +83,114 @@ update_last_run() {
        "$REPORTS_JSON" > "$tmp" && mv "$tmp" "$REPORTS_JSON"
 }
 
+mark_schedule_entry() {
+    # Update the status of an expanded_schedule entry by run_at timestamp
+    local id="$1" run_at="$2" status="$3" tmp
+    tmp=$(mktemp)
+    jq --arg id "$id" --arg run_at "$run_at" --arg status "$status" \
+       '(.reports[] | select(.id == $id) | .expanded_schedule[] | select(.run_at == $run_at) | .status) |= $status' \
+       "$REPORTS_JSON" > "$tmp" && mv "$tmp" "$REPORTS_JSON"
+}
+
+# ---------------------------------------------------------------------------
+# Schedule helpers
+# ---------------------------------------------------------------------------
+find_due_entry() {
+    # Print the run_at of the first pending expanded_schedule entry due this
+    # hour (Pacific Time), or nothing if none is due.
+    local id="$1"
+    python3 - "$id" "$REPORTS_JSON" <<'PYEOF'
+import json, sys
+from datetime import datetime
+try:
+    from zoneinfo import ZoneInfo
+    PT = ZoneInfo("America/Los_Angeles")
+except ImportError:
+    from datetime import timezone, timedelta
+    PT = timezone(timedelta(hours=-7))
+
+report_id, reports_json = sys.argv[1], sys.argv[2]
+now = datetime.now(PT)
+
+with open(reports_json) as f:
+    data = json.load(f)
+
+for r in data.get("reports", []):
+    if r.get("id") != report_id:
+        continue
+    for entry in r.get("expanded_schedule", []):
+        if entry.get("status") != "pending":
+            continue
+        run_at = datetime.fromisoformat(entry["run_at"])
+        if run_at.date() == now.date() and run_at.hour == now.hour:
+            print(entry["run_at"])
+            sys.exit(0)
+PYEOF
+}
+
+maybe_expand_schedules() {
+    # Auto-expand if fewer than 14 days of pending entries remain across all reports.
+    local days_ahead
+    days_ahead=$(python3 - "$REPORTS_JSON" <<'PYEOF'
+import json, sys
+from datetime import datetime, date
+
+with open(sys.argv[1]) as f:
+    data = json.load(f)
+
+pending = [
+    e["run_at"]
+    for r in data.get("reports", [])
+    for e in r.get("expanded_schedule", [])
+    if e.get("status") == "pending"
+]
+
+if not pending:
+    print(0)
+else:
+    latest = datetime.fromisoformat(max(pending)).date()
+    print(max((latest - date.today()).days, 0))
+PYEOF
+    )
+
+    if [[ "$days_ahead" -lt 14 ]]; then
+        log "Expanding schedules (${days_ahead} day(s) of pending entries remaining)..."
+        python3 "$SCRIPT_DIR/expand_schedules.py" "$REPORTS_JSON"
+    fi
+}
+
 # ---------------------------------------------------------------------------
 # Run one report
 # ---------------------------------------------------------------------------
 run_report() {
     local id="$1"
-    local label advertiser_id start end output_dir drive_folder_id campaign_ids
+    local due_run_at="${2:-}"   # set when triggered by expanded_schedule; empty for --all/--report-id
+    local label advertiser_id output_dir drive_folder_id campaign_ids
 
     label=$(jq_report "$id" ".label")
     advertiser_id=$(jq_report "$id" ".advertiser_id")
-    start=$(jq_report "$id" ".date_range.start")
-    end=$(jq_report "$id" ".date_range.end")
     output_dir=$(jq_report "$id" ".output_dir")
     drive_folder_id=$(jq_report "$id" ".drive_folder_id")
     campaign_ids=$(jq_report "$id" '.campaign_ids | join(" ")')
+
+    local date_range_mode
+    date_range_mode=$(jq_report "$id" '.schedule.date_range_mode // "static"')
+
+    local start end
+    if [[ "$date_range_mode" == "previous_week" ]]; then
+        # Always compute Sun–Sat of the week prior to the current Monday
+        read -r start end < <(python3 -c "
+from datetime import datetime, timedelta
+today = datetime.now()
+this_monday = today - timedelta(days=today.weekday())
+sun = this_monday - timedelta(days=8)
+sat = this_monday - timedelta(days=2)
+print(sun.strftime('%Y-%m-%d'), sat.strftime('%Y-%m-%d'))
+")
+    else
+        start=$(jq_report "$id" ".schedule.date_range.start")
+        end=$(jq_report "$id" ".schedule.date_range.end")
+    fi
 
     local triggered_at
     triggered_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
@@ -121,7 +218,10 @@ print(f\"{s.strftime('%b %-d')} - {e.strftime('%b %-d, %Y')}\")
 
     log "▶  Report: $label ($id)"
 
-    # Mark as running
+    # Mark expanded_schedule entry as running
+    [[ -n "$due_run_at" ]] && mark_schedule_entry "$id" "$due_run_at" "running"
+
+    # Mark run history as running
     append_run "$id" "$(jq -n \
         --arg t "$triggered_at" \
         '{triggered_at:$t,status:"running",campaigns_json:null,creatives_json:null,pptx_path:null,drive_url:null,error:null,error_step:null,error_detail:null}')"
@@ -151,6 +251,7 @@ print(f\"{s.strftime('%b %-d')} - {e.strftime('%b %-d, %Y')}\")
         fail "  Detail  : $detail"
         fail "  Action  : Skipping generate and upload steps."
 
+        [[ -n "$due_run_at" ]] && mark_schedule_entry "$id" "$due_run_at" "failed"
         update_last_run "$id" "$(jq -n \
             --arg t "$triggered_at" --arg e "$err" --arg ed "$detail" \
             '{triggered_at:$t,status:"failed",error_step:"fetch",error:$e,error_detail:$ed,campaigns_json:null,creatives_json:null,pptx_path:null,drive_url:null}')"
@@ -185,6 +286,7 @@ print(f\"{s.strftime('%b %-d')} - {e.strftime('%b %-d, %Y')}\")
         fail "  Detail  : $detail"
         fail "  Action  : Skipping upload step. JSON data saved locally."
 
+        [[ -n "$due_run_at" ]] && mark_schedule_entry "$id" "$due_run_at" "failed"
         update_last_run "$id" "$(jq -n \
             --arg t "$triggered_at" --arg e "$err" --arg ed "$detail" \
             --arg cs "$campaigns_json" --arg cr "$creatives_json" \
@@ -214,6 +316,7 @@ print(f\"{s.strftime('%b %-d')} - {e.strftime('%b %-d, %Y')}\")
         fail "  Error   : $err"
         fail "  Note    : PPTX saved locally at $pptx_path"
 
+        [[ -n "$due_run_at" ]] && mark_schedule_entry "$id" "$due_run_at" "failed"
         update_last_run "$id" "$(jq -n \
             --arg t "$triggered_at" --arg e "$err" \
             --arg cs "$campaigns_json" --arg cr "$creatives_json" --arg pp "$pptx_path" \
@@ -226,6 +329,7 @@ print(f\"{s.strftime('%b %-d')} - {e.strftime('%b %-d, %Y')}\")
     ok "Uploaded: ${drive_url:-'(URL not captured)'}"
 
     # ── Success ───────────────────────────────────────────────────────────
+    [[ -n "$due_run_at" ]] && mark_schedule_entry "$id" "$due_run_at" "completed"
     update_last_run "$id" "$(jq -n \
         --arg t "$triggered_at" \
         --arg cs "$campaigns_json" --arg cr "$creatives_json" \
@@ -249,6 +353,11 @@ fi
 # Load .env if present
 [[ -f "$SCRIPT_DIR/.env" ]] && set -o allexport && source "$SCRIPT_DIR/.env" && set +o allexport
 
+# Auto-expand schedules if running low (skip for manual overrides)
+if [[ "$RUN_ALL" == false && -z "$TARGET_ID" ]]; then
+    maybe_expand_schedules
+fi
+
 TOTAL=0
 PASSED=0
 FAILED=0
@@ -260,17 +369,15 @@ while IFS= read -r id; do
         continue
     fi
 
-    schedule=$(jq_report "$id" ".schedule")
-
-    # Check schedule (skip if not due and not --all / --report-id)
+    # Determine if this report is due
+    due_run_at=""
     if [[ "$RUN_ALL" == false && -z "$TARGET_ID" ]]; then
-        if ! python3 "$SCRIPT_DIR/check_schedule.py" "$schedule" 2>/dev/null; then
-            continue
-        fi
+        due_run_at=$(find_due_entry "$id")
+        [[ -z "$due_run_at" ]] && continue
     fi
 
     TOTAL=$((TOTAL + 1))
-    if run_report "$id"; then
+    if run_report "$id" "${due_run_at}"; then
         PASSED=$((PASSED + 1))
     else
         FAILED=$((FAILED + 1))

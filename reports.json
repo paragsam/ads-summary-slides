@@ -3,9 +3,10 @@
     "what_is_this_file": "This file is the single source of truth for all TikTok Ads report jobs. It controls which reports are generated, when they run, and records the outcome of every run.",
     "how_to_add_a_report": "Append a new object to the 'reports' array. Copy the structure of an existing entry. Give it a unique 'id' (lowercase, hyphens only). Set 'enabled' to true.",
     "how_to_disable_a_report": "Set 'enabled' to false. Do not delete the entry.",
-    "how_to_reschedule": "Update the 'schedule' field using plain English. See 'schedule_format' below.",
+    "how_to_reschedule": "Update the 'schedule.frequency' field using plain English. The expanded_schedule will be regenerated automatically on the next cron run.",
     "how_to_check_for_errors": "Look at the last entry in each report's 'runs' array. If 'status' is 'failed', read 'error' for a short summary, 'error_step' for which step failed (fetch / generate / upload), and 'error_detail' for the full error message.",
     "template_selection": "The PPTX template is chosen automatically based on the number of campaigns in 'campaign_ids'. Templates live in the templates/ directory and are named Brand_Objective_1_campaign.pptx through Brand_Objective_5_campaign.pptx.",
+    "expanded_schedule_explained": "expanded_schedule is auto-generated from schedule.frequency. It lists concrete run datetimes for the next 2 months. The cron runs every hour and checks this list \u2014 do not edit it manually. It is regenerated automatically when fewer than 14 days of pending entries remain.",
     "runs_field_reference": {
       "triggered_at": "ISO timestamp of when this run started.",
       "status": "success | failed | running",
@@ -19,7 +20,7 @@
     },
     "never_do_this": "Never delete entries from a report's 'runs' array. Always append.",
     "schedule_format": {
-      "description": "Write schedules in plain English. All times are Pacific Time.",
+      "description": "Write schedule.frequency in plain English. All times are Pacific Time.",
       "examples": [
         "hourly",
         "daily at 9am",
@@ -34,7 +35,6 @@
       "schedule",
       "advertiser_id",
       "campaign_ids",
-      "date_range",
       "output_dir",
       "drive_folder_id",
       "enabled"
@@ -42,11 +42,12 @@
     "field_reference": {
       "id": "Unique identifier for this report. Use lowercase letters and hyphens only. Used in output filenames.",
       "label": "Human-readable name shown in logs and the slide deck title.",
-      "schedule": "When to run this report. Plain English, Pacific Time. See schedule_format above.",
+      "schedule.frequency": "When to run this report. Plain English, Pacific Time. See schedule_format above.",
+      "schedule.date_range_mode": "How to determine the reporting date range. 'previous_week' automatically pulls Sun-Sat of the prior week. 'static' uses schedule.date_range.start and .end.",
+      "schedule.date_range.start": "Start date. Format: YYYY-MM-DD. Only used when date_range_mode is 'static'.",
+      "schedule.date_range.end": "End date. Format: YYYY-MM-DD. Only used when date_range_mode is 'static'.",
       "advertiser_id": "TikTok Ads advertiser account ID.",
-      "campaign_ids": "List of TikTok campaign IDs to include (1–5). The number of campaigns determines which template is used automatically. Use an empty array [] to include all campaigns under the advertiser.",
-      "date_range.start": "Start date for the data pull. Format: YYYY-MM-DD.",
-      "date_range.end": "End date for the data pull. Format: YYYY-MM-DD.",
+      "campaign_ids": "List of TikTok campaign IDs to include (1-5). The number of campaigns determines which template is used automatically.",
       "output_dir": "Directory where generated JSON data files and PPTX files are saved.",
       "drive_folder_id": "Google Drive folder ID to upload the finished deck into.",
       "enabled": "Set to true to run this report on schedule. Set to false to pause it."
@@ -56,18 +57,22 @@
   "reports": [
     {
       "_comment": "This is an example report. Edit it or add new ones below.",
-      "id": "weekly-brand-overview",
-      "label": "Weekly Brand Overview",
-      "schedule": "weekly on monday at 8am",
-      "advertiser_id": "YOUR_ADVERTISER_ID",
-      "campaign_ids": ["CAMPAIGN_ID_1", "CAMPAIGN_ID_2", "CAMPAIGN_ID_3"],
-      "date_range": {
-        "start": "2026-05-01",
-        "end": "2026-05-18"
+      "id": "weekly-brand-report",
+      "label": "Weekly Brand Report",
+      "schedule": {
+        "frequency": "weekly on monday at 8am",
+        "date_range_mode": "previous_week"
       },
+      "advertiser_id": "YOUR_ADVERTISER_ID",
+      "campaign_ids": [
+        "CAMPAIGN_ID_1",
+        "CAMPAIGN_ID_2",
+        "CAMPAIGN_ID_3"
+      ],
       "output_dir": "output/",
       "drive_folder_id": "YOUR_GOOGLE_DRIVE_FOLDER_ID",
       "enabled": false,
+      "expanded_schedule": [],
       "runs": []
     }
   ]
