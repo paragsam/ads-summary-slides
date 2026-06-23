@@ -286,12 +286,12 @@ def build_brand2shop_campaign_slide(slide, campaign: dict, date_label: str) -> N
             set_cell_text(traffic_table.rows[r_idx].cells[1], value)
 
     shop_values = [
-        fmt_pct(campaign.get("product_page_view_rate", "0")),       # TODO: pending API field name
-        fmt_number(campaign.get("new_shop_visitor", "0")),           # TODO: pending API field name
-        fmt_number(campaign.get("assisted_new_shop_visitor", "0")),  # TODO: pending API field name
-        fmt_currency(campaign.get("cost_per_product_page_view", "0")),  # TODO: pending API field name
+        fmt_pct(campaign.get("product_page_view_rate", "0")),   # time_attr_onsite_on_web_detail_per_click
+        "—",   # New Shop Visitors — not available in public API (evertouch/internal only)
+        "—",   # Assisted New Shop Visitors — not available in public API
+        "—",   # Assisted Cost Per Product Page View — not available in public API
         fmt_number(campaign.get("complete_payment", "0")),
-        fmt_currency(campaign.get("assisted_complete_payment_value", "0")),  # TODO: pending API field name
+        "—",   # Assisted Gross Revenue — not available in public API
         campaign.get("complete_payment_roas", "0"),
     ]
     for r_idx, value in enumerate(shop_values, start=1):
@@ -320,12 +320,12 @@ def build_brand2shop_creative_slide(slide, creatives: list[dict], date_label: st
             creative["ad_name"],
             fmt_currency(creative["spend"]),
             fmt_number(creative["impressions"]),
-            fmt_pct(creative.get("product_page_view_rate", "0")),        # TODO: pending API field name
-            fmt_number(creative.get("new_shop_visitor", "0")),           # TODO: pending API field name
-            fmt_number(creative.get("assisted_new_shop_visitor", "0")),  # TODO: pending API field name
-            fmt_currency(creative.get("cost_per_product_page_view", "0")),  # TODO: pending API field name
+            fmt_pct(creative.get("product_page_view_rate", "0")),   # time_attr_onsite_on_web_detail_per_click
+            "—",   # New Shop Visitors — not available in public API
+            "—",   # Assisted New Shop Visitors — not available in public API
+            "—",   # Assisted Cost Per Product Page View — not available in public API
             fmt_number(creative.get("complete_payment", "0")),
-            fmt_currency(creative.get("assisted_complete_payment_value", "0")),  # TODO: pending API field name
+            "—",   # Assisted Gross Revenue — not available in public API
         ]
         for c_idx, value in enumerate(row_data):
             if c_idx < len(table.columns):

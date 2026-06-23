@@ -33,7 +33,10 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-BASE_URL = "https://business-api.tiktok.com/open_api/v1.3"
+# Report endpoint: v2.0 (GET with JSON body, advertiser_ids array).
+# Management endpoints (campaign/get, ad/get): still v1.3 — no v2.0 equivalents yet.
+BASE_URL        = "https://business-api.tiktok.com/open_api/v2.0"
+BASE_URL_MGMT   = "https://business-api.tiktok.com/open_api/v1.3"
 PAGE_SIZE = 100
 
 
@@ -75,7 +78,7 @@ def encode_params(payload: dict) -> dict:
 
 
 def get_all_pages(url: str, hdrs: dict, payload: dict) -> list[dict]:
-    """Paginate through all pages of a TikTok API GET response and return all list items."""
+    """Paginate through management endpoints (GET with query params)."""
     items = []
     page = 1
     while True:
@@ -88,6 +91,35 @@ def get_all_pages(url: str, hdrs: dict, payload: dict) -> list[dict]:
             die(f"TikTok API error: {body.get('message', 'unknown')}", json.dumps(body))
 
         data = body["data"]
+        items.extend(data.get("list") or [])
+
+        page_info = data.get("page_info", {})
+        if page >= page_info.get("total_page", 1):
+            break
+        page += 1
+
+    return items
+
+
+def get_report_pages(url: str, hdrs: dict, body: dict) -> list[dict]:
+    """Paginate through a v2.0 report endpoint (GET with JSON body).
+
+    TikTok's report/integrated/get is unusual: it's a GET that expects a JSON
+    body. urllib handles this naturally; with requests use data=json.dumps(body)
+    (not json=body, which would switch the method semantics on some proxies).
+    """
+    items = []
+    page = 1
+    while True:
+        paged_body = {**body, "page": page, "page_size": PAGE_SIZE}
+        resp = requests.get(url, headers=hdrs, data=json.dumps(paged_body), timeout=30)
+        resp.raise_for_status()
+        resp_body = resp.json()
+
+        if resp_body.get("code") != 0:
+            die(f"TikTok API error: {resp_body.get('message', 'unknown')}", json.dumps(resp_body))
+
+        data = resp_body["data"]
         items.extend(data.get("list") or [])
 
         page_info = data.get("page_info", {})
@@ -112,7 +144,7 @@ def fetch_campaign_info(advertiser_id: str, campaign_ids: list[str], hdrs: dict)
     if filtering:
         payload["filtering"] = json.dumps(filtering)
 
-    items = get_all_pages(f"{BASE_URL}/campaign/get/", hdrs, payload)
+    items = get_all_pages(f"{BASE_URL_MGMT}/campaign/get/", hdrs, payload)
     return {
         str(c["campaign_id"]): {
             "campaign_name": c["campaign_name"],
@@ -130,7 +162,7 @@ def fetch_campaign_metrics(
     hdrs: dict,
     extra_metrics: list[str] | None = None,
 ) -> list[dict]:
-    """Fetch aggregated campaign-level metrics for the date range."""
+    """Fetch aggregated campaign-level metrics for the date range (v2.0 report API)."""
     metrics = [
         "spend", "impressions", "reach", "clicks", "ctr", "cpm", "cpc",
         "video_play_actions", "video_watched_6s", "engagement_rate",
@@ -139,8 +171,8 @@ def fetch_campaign_metrics(
     if extra_metrics:
         metrics += extra_metrics
 
-    payload: dict = {
-        "advertiser_id": advertiser_id,
+    body: dict = {
+        "advertiser_ids": [advertiser_id],
         "report_type": "BASIC",
         "data_level": "AUCTION_CAMPAIGN",
         "dimensions": ["campaign_id"],
@@ -150,11 +182,11 @@ def fetch_campaign_metrics(
     }
 
     if campaign_ids:
-        payload["filtering"] = [
-            {"field_name": "campaign_ids", "filter_type": "IN", "filter_value": json.dumps(campaign_ids)}
+        body["filtering"] = [
+            {"field_name": "campaign_id", "filter_type": "IN", "filter_values": campaign_ids}
         ]
 
-    return get_all_pages(f"{BASE_URL}/report/integrated/get/", hdrs, payload)
+    return get_report_pages(f"{BASE_URL}/report/integrated/get/", hdrs, body)
 
 
 def fetch_ad_metrics(
@@ -165,7 +197,7 @@ def fetch_ad_metrics(
     hdrs: dict,
     extra_metrics: list[str] | None = None,
 ) -> list[dict]:
-    """Fetch aggregated ad-level (creative) metrics for the date range."""
+    """Fetch aggregated ad-level (creative) metrics for the date range (v2.0 report API)."""
     metrics = [
         "spend", "impressions", "clicks", "ctr", "cpm", "cpc",
         "video_play_actions", "video_watched_6s", "engagement_rate",
@@ -173,8 +205,8 @@ def fetch_ad_metrics(
     if extra_metrics:
         metrics += extra_metrics
 
-    payload: dict = {
-        "advertiser_id": advertiser_id,
+    body: dict = {
+        "advertiser_ids": [advertiser_id],
         "report_type": "BASIC",
         "data_level": "AUCTION_AD",
         "dimensions": ["ad_id"],
@@ -184,11 +216,11 @@ def fetch_ad_metrics(
     }
 
     if campaign_ids:
-        payload["filtering"] = [
-            {"field_name": "campaign_ids", "filter_type": "IN", "filter_value": json.dumps(campaign_ids)}
+        body["filtering"] = [
+            {"field_name": "campaign_id", "filter_type": "IN", "filter_values": campaign_ids}
         ]
 
-    return get_all_pages(f"{BASE_URL}/report/integrated/get/", hdrs, payload)
+    return get_report_pages(f"{BASE_URL}/report/integrated/get/", hdrs, body)
 
 
 def fetch_ad_details(advertiser_id: str, ad_ids: list[str], hdrs: dict) -> dict[str, dict]:
@@ -204,7 +236,7 @@ def fetch_ad_details(advertiser_id: str, ad_ids: list[str], hdrs: dict) -> dict[
             "filtering": json.dumps({"ad_ids": chunk}),
             "fields": json.dumps(["ad_id", "ad_name", "campaign_id"]),
         }
-        items = get_all_pages(f"{BASE_URL}/ad/get/", hdrs, payload)
+        items = get_all_pages(f"{BASE_URL_MGMT}/ad/get/", hdrs, payload)
         for ad in items:
             details[str(ad["ad_id"])] = {
                 "ad_name": ad.get("ad_name", ""),
@@ -239,9 +271,12 @@ def build_campaign_record(item: dict, campaign_info: dict[str, dict]) -> dict:
         "conversions": m.get("conversion", "0"),
         "landing_page_views": m.get("total_landing_page_view", "0"),
     }
-    # Brand2Shop fields (present only when fetched with brand2shop template type)
+    # Brand2Shop fields (present only when fetched with brand2shop template type).
+    # Map the verbose API field name to a shorter key for use in PPTX generation.
+    if "time_attr_onsite_on_web_detail_per_click" in m:
+        record["product_page_view_rate"] = m["time_attr_onsite_on_web_detail_per_click"]
     for field in BRAND2SHOP_CAMPAIGN_METRICS:
-        if field in m:
+        if field in m and field != "time_attr_onsite_on_web_detail_per_click":
             record[field] = m[field]
     return record
 
@@ -268,8 +303,10 @@ def build_creative_record(item: dict, campaign_info: dict[str, dict], ad_details
         "vtr_6s": safe_div(float(m.get("video_watched_6s") or 0), impressions),
         "engagement_rate": m.get("engagement_rate", "0"),
     }
+    if "time_attr_onsite_on_web_detail_per_click" in m:
+        record["product_page_view_rate"] = m["time_attr_onsite_on_web_detail_per_click"]
     for field in BRAND2SHOP_AD_METRICS:
-        if field in m:
+        if field in m and field != "time_attr_onsite_on_web_detail_per_click":
             record[field] = m[field]
     return record
 
@@ -301,22 +338,26 @@ def write_csv(path: Path, data: list[dict], label: str) -> None:
 # ---------------------------------------------------------------------------
 
 BRAND2SHOP_CAMPAIGN_METRICS = [
-    # Confirmed valid against TikTok Business API v1.3
-    "complete_payment",             # Assisted Purchases
-    "complete_payment_rate",        # Purchase rate
-    "complete_payment_roas",        # Assisted ROAS
-    "total_active_pay_roas",        # Total active pay ROAS
-    "on_web_order",                 # Web orders
-    # TODO: map these once correct API field names are confirmed:
-    # "product_page_view_rate"      → Product Page View Rate (PDP VR)
-    # "new_shop_visitor"            → New Shop Visitors (90-day inactive)
-    # "assisted_new_shop_visitor"   → Assisted New Shop Visitors (90-day inactive)
-    # "cost_per_product_page_view"  → Assisted Cost Per Product Page View
-    # "assisted_complete_payment_value" → Assisted Gross Revenue
+    # Confirmed available via v2.0 public API
+    "time_attr_onsite_on_web_detail_per_click",  # Product Page View Rate
+    "complete_payment",                           # Purchases (last-click)
+    "complete_payment_rate",                      # Purchase rate
+    "complete_payment_roas",                      # ROAS (last-click)
+    "total_active_pay_roas",                      # Total active pay ROAS
+    "on_web_order",                               # Web orders
+    # The following "evertouch/assisted" metrics are NOT available in the public API
+    # (confirmed returning "not support" from TikTok — internal dashboard only):
+    # time_attr_shop_90d_new_reach_count              → New Shop Visitors (90-day inactive)
+    # time_attr_shop_evertouch_90d_new_reach_count    → Assisted New Shop Visitors
+    # time_attr_cost_per_onsite_evertouch_on_web_detail → Assisted Cost Per Product Page View
+    # time_attr_onsite_evertouch_shopping             → Assisted Purchases
+    # time_attr_total_onsite_evertouch_shopping_value → Assisted Gross Revenue
+    # time_attr_onsite_evertouch_shopping_roas        → Assisted ROAS
 ]
 
 BRAND2SHOP_AD_METRICS = [
-    # Confirmed valid against TikTok Business API v1.3
+    # Confirmed available via v2.0 public API
+    "time_attr_onsite_on_web_detail_per_click",  # Product Page View Rate
     "complete_payment",
     "complete_payment_rate",
     "complete_payment_roas",
