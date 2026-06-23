@@ -150,6 +150,10 @@ def find_table(slide) -> object | None:
     return None
 
 
+def find_tables(slide) -> list:
+    return [shape.table for shape in slide.shapes if shape.has_table]
+
+
 # ---------------------------------------------------------------------------
 # Slide builders
 # ---------------------------------------------------------------------------
@@ -253,6 +257,82 @@ def build_creative_slide(slide, objective: str, creatives: list[dict], date_labe
 
 
 # ---------------------------------------------------------------------------
+# Brand2Shop slide builders
+# ---------------------------------------------------------------------------
+
+def build_brand2shop_campaign_slide(slide, campaign: dict, date_label: str) -> None:
+    """Fill Slide 1 of Brand2Shop — Performance By Campaign (two tables)."""
+    replace_text_in_slide(slide, "5/6-5/21", date_label)
+
+    tables = find_tables(slide)
+    if len(tables) < 2:
+        return
+
+    traffic_table = tables[0]  # Traffic Metrics (9 rows × 2 cols)
+    shop_table = tables[1]     # Brand Ads to Shop Metrics (8 rows × 2 cols)
+
+    traffic_values = [
+        fmt_currency(campaign["spend"]),
+        fmt_number(campaign["impressions"]),
+        fmt_currency(campaign["cpm"]),
+        fmt_number(campaign["reach"]),
+        fmt_number(campaign["clicks"]),
+        fmt_pct(campaign["ctr"]),
+        fmt_pct(campaign["vtr"]),
+        fmt_pct(campaign["vtr_6s"]),
+    ]
+    for r_idx, value in enumerate(traffic_values, start=1):
+        if r_idx < len(traffic_table.rows):
+            set_cell_text(traffic_table.rows[r_idx].cells[1], value)
+
+    shop_values = [
+        fmt_pct(campaign.get("product_page_view_rate", "0")),       # TODO: pending API field name
+        fmt_number(campaign.get("new_shop_visitor", "0")),           # TODO: pending API field name
+        fmt_number(campaign.get("assisted_new_shop_visitor", "0")),  # TODO: pending API field name
+        fmt_currency(campaign.get("cost_per_product_page_view", "0")),  # TODO: pending API field name
+        fmt_number(campaign.get("complete_payment", "0")),
+        fmt_currency(campaign.get("assisted_complete_payment_value", "0")),  # TODO: pending API field name
+        campaign.get("complete_payment_roas", "0"),
+    ]
+    for r_idx, value in enumerate(shop_values, start=1):
+        if r_idx < len(shop_table.rows):
+            set_cell_text(shop_table.rows[r_idx].cells[1], value)
+
+
+def build_brand2shop_creative_slide(slide, creatives: list[dict], date_label: str) -> None:
+    """Fill Slide 2 of Brand2Shop — Performance By Creative (9-column table)."""
+    replace_text_in_slide(slide, "5/6-5/21", date_label)
+
+    table = find_table(slide)
+    if table is None:
+        return
+
+    top = sorted(creatives, key=lambda c: float(c["spend"]), reverse=True)[:7]
+
+    ensure_table_rows(table, needed=len(top), header_rows=1)
+
+    for r in range(1, len(table.rows)):
+        for c in range(len(table.columns)):
+            set_cell_text(table.rows[r].cells[c], "")
+
+    for r_idx, creative in enumerate(top, start=1):
+        row_data = [
+            creative["ad_name"],
+            fmt_currency(creative["spend"]),
+            fmt_number(creative["impressions"]),
+            fmt_pct(creative.get("product_page_view_rate", "0")),        # TODO: pending API field name
+            fmt_number(creative.get("new_shop_visitor", "0")),           # TODO: pending API field name
+            fmt_number(creative.get("assisted_new_shop_visitor", "0")),  # TODO: pending API field name
+            fmt_currency(creative.get("cost_per_product_page_view", "0")),  # TODO: pending API field name
+            fmt_number(creative.get("complete_payment", "0")),
+            fmt_currency(creative.get("assisted_complete_payment_value", "0")),  # TODO: pending API field name
+        ]
+        for c_idx, value in enumerate(row_data):
+            if c_idx < len(table.columns):
+                set_cell_text(table.rows[r_idx].cells[c_idx], value)
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
@@ -288,6 +368,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--start", required=True, help="Start date YYYY-MM-DD")
     parser.add_argument("--end", required=True, help="End date YYYY-MM-DD")
     parser.add_argument("--out", required=True, help="Output .pptx path")
+    parser.add_argument("--template-type", default="brand_objective",
+                        choices=["brand_objective", "brand2shop"],
+                        help="Report template type (default: brand_objective)")
     return parser.parse_args(argv)
 
 
@@ -307,29 +390,48 @@ def main(argv: list[str] | None = None) -> None:
     creatives = json.loads(creatives_path.read_text())
     date_label = fmt_date_range(args.start, args.end)
 
-    template_path = resolve_template(len(campaigns))
-    print(f"Using template: {template_path.name} ({len(campaigns)} campaign(s))")
-    prs = Presentation(str(template_path))
+    if args.template_type == "brand2shop":
+        template_path = TEMPLATE_DIR / "brand2shop.pptx"
+        if not template_path.exists():
+            print(json.dumps({"error": f"Template not found: {template_path}"}), file=sys.stderr)
+            sys.exit(1)
+        print(f"Using template: {template_path.name}")
+        prs = Presentation(str(template_path))
 
-    # --- Slide 1: Performance By Objective ---
-    print("Building Slide 1: Performance By Objective...")
-    build_objective_slide(prs.slides[0], campaigns, date_label)
+        # Slide 1: Performance By Campaign (single campaign aggregated)
+        print("Building Slide 1: Performance By Campaign...")
+        # Aggregate all campaigns into one record for the summary table
+        campaign = campaigns[0] if campaigns else {}
+        build_brand2shop_campaign_slide(prs.slides[0], campaign, date_label)
 
-    # --- Slides 2+: Performance By Creative, one per objective ---
-    objectives = list(dict.fromkeys(c["objective_type"] for c in campaigns))
-    for i, objective in enumerate(objectives):
-        obj_creatives = [c for c in creatives if c["objective_type"] == objective]
-        print(f"Building creative slide for objective: {objective_label(objective)} "
-              f"({len(obj_creatives)} creatives)...")
+        # Slide 2: Performance By Creative
+        print(f"Building Slide 2: Performance By Creative ({len(creatives)} creatives)...")
+        build_brand2shop_creative_slide(prs.slides[1], creatives, date_label)
 
-        if i == 0:
-            # Use the existing Slide 2 as-is for the first objective
-            creative_slide = prs.slides[1]
-        else:
-            # Clone Slide 2 for subsequent objectives
-            creative_slide = clone_slide(prs, 1)
+        # Slide 3: Insights — left as template placeholder for manual editing
 
-        build_creative_slide(creative_slide, objective, obj_creatives, date_label)
+    else:
+        template_path = resolve_template(len(campaigns))
+        print(f"Using template: {template_path.name} ({len(campaigns)} campaign(s))")
+        prs = Presentation(str(template_path))
+
+        # Slide 1: Performance By Objective
+        print("Building Slide 1: Performance By Objective...")
+        build_objective_slide(prs.slides[0], campaigns, date_label)
+
+        # Slides 2+: Performance By Creative, one per objective
+        objectives = list(dict.fromkeys(c["objective_type"] for c in campaigns))
+        for i, objective in enumerate(objectives):
+            obj_creatives = [c for c in creatives if c["objective_type"] == objective]
+            print(f"Building creative slide for objective: {objective_label(objective)} "
+                  f"({len(obj_creatives)} creatives)...")
+
+            if i == 0:
+                creative_slide = prs.slides[1]
+            else:
+                creative_slide = clone_slide(prs, 1)
+
+            build_creative_slide(creative_slide, objective, obj_creatives, date_label)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     prs.save(str(out_path))

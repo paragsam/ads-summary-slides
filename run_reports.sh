@@ -173,6 +173,9 @@ run_report() {
     drive_folder_id=$(jq_report "$id" ".drive_folder_id")
     campaign_ids=$(jq_report "$id" '.campaign_ids | join(" ")')
 
+    local template_type
+    template_type=$(jq_report "$id" '.template_type // "brand_objective"')
+
     local date_range_mode
     date_range_mode=$(jq_report "$id" '.schedule.date_range_mode // "static"')
 
@@ -185,6 +188,16 @@ today = datetime.now()
 this_monday = today - timedelta(days=today.weekday())
 sun = this_monday - timedelta(days=8)
 sat = this_monday - timedelta(days=2)
+print(sun.strftime('%Y-%m-%d'), sat.strftime('%Y-%m-%d'))
+")
+    elif [[ "$date_range_mode" == "previous_two_weeks" ]]; then
+        # Compute the 14-day Sun–Sat×2 window ending last Saturday
+        read -r start end < <(python3 -c "
+from datetime import datetime, timedelta
+today = datetime.now()
+this_monday = today - timedelta(days=today.weekday())
+sat = this_monday - timedelta(days=2)
+sun = sat - timedelta(days=13)
 print(sun.strftime('%Y-%m-%d'), sat.strftime('%Y-%m-%d'))
 ")
     else
@@ -212,7 +225,9 @@ print(f\"{s.strftime('%b %-d')} - {e.strftime('%b %-d, %Y')}\")
 
     local base="${SCRIPT_DIR}/${output_dir}${id}_${flight_slug}"
     local campaigns_json="${base}_campaigns.json"
+    local campaigns_csv="${base}_campaigns.csv"
     local creatives_json="${base}_creatives.json"
+    local creatives_csv="${base}_creatives.csv"
     local pptx_path="${base}.pptx"
     local drive_title="${label} — ${flight_label}"
 
@@ -236,6 +251,7 @@ print(f\"{s.strftime('%b %-d')} - {e.strftime('%b %-d, %Y')}\")
             --campaign-ids $campaign_ids \
             --start "$start" \
             --end "$end" \
+            --template-type "$template_type" \
             --out "${base}.json" \
             2>"$fetch_stderr"; then
 
@@ -259,7 +275,7 @@ print(f\"{s.strftime('%b %-d')} - {e.strftime('%b %-d, %Y')}\")
         return 1
     fi
     rm -f "$fetch_stderr"
-    ok "Fetch complete → ${campaigns_json##*/}, ${creatives_json##*/}"
+    ok "Fetch complete → ${campaigns_json##*/}, ${campaigns_csv##*/}, ${creatives_json##*/}, ${creatives_csv##*/}"
 
     # ── Step 2: Generate PPTX ─────────────────────────────────────────────
     step "Step 2/3 — Generating PPTX..."
@@ -271,6 +287,7 @@ print(f\"{s.strftime('%b %-d')} - {e.strftime('%b %-d, %Y')}\")
             --creatives "$creatives_json" \
             --start "$start" \
             --end "$end" \
+            --template-type "$template_type" \
             --out "$pptx_path" \
             2>"$gen_stderr"; then
 

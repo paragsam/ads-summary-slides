@@ -1,9 +1,11 @@
 """
-Fetch TikTok Ads campaign and creative metrics and write to JSON.
+Fetch TikTok Ads campaign and creative metrics and write to JSON + CSV.
 
-Outputs two files derived from --out:
+Outputs four files derived from --out:
   <stem>_campaigns.json  — one object per campaign, totals for the date range
+  <stem>_campaigns.csv   — same data in CSV format
   <stem>_creatives.json  — one object per ad/creative, totals for the date range
+  <stem>_creatives.csv   — same data in CSV format
 
 Usage:
   python fetch_tiktok_data.py \
@@ -20,6 +22,7 @@ Credentials are read from environment variables (or a .env file):
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import os
 import sys
@@ -125,18 +128,23 @@ def fetch_campaign_metrics(
     start: str,
     end: str,
     hdrs: dict,
+    extra_metrics: list[str] | None = None,
 ) -> list[dict]:
     """Fetch aggregated campaign-level metrics for the date range."""
+    metrics = [
+        "spend", "impressions", "reach", "clicks", "ctr", "cpm", "cpc",
+        "video_play_actions", "video_watched_6s", "engagement_rate",
+        "conversion", "total_landing_page_view",
+    ]
+    if extra_metrics:
+        metrics += extra_metrics
+
     payload: dict = {
         "advertiser_id": advertiser_id,
         "report_type": "BASIC",
         "data_level": "AUCTION_CAMPAIGN",
         "dimensions": ["campaign_id"],
-        "metrics": [
-            "spend", "impressions", "reach", "clicks", "ctr", "cpm", "cpc",
-            "video_play_actions", "video_watched_6s", "engagement_rate",
-            "conversion", "total_landing_page_view",
-        ],
+        "metrics": metrics,
         "start_date": start,
         "end_date": end,
     }
@@ -155,17 +163,22 @@ def fetch_ad_metrics(
     start: str,
     end: str,
     hdrs: dict,
+    extra_metrics: list[str] | None = None,
 ) -> list[dict]:
     """Fetch aggregated ad-level (creative) metrics for the date range."""
+    metrics = [
+        "spend", "impressions", "clicks", "ctr", "cpm", "cpc",
+        "video_play_actions", "video_watched_6s", "engagement_rate",
+    ]
+    if extra_metrics:
+        metrics += extra_metrics
+
     payload: dict = {
         "advertiser_id": advertiser_id,
         "report_type": "BASIC",
         "data_level": "AUCTION_AD",
         "dimensions": ["ad_id"],
-        "metrics": [
-            "spend", "impressions", "clicks", "ctr", "cpm", "cpc",
-            "video_play_actions", "video_watched_6s", "engagement_rate",
-        ],
+        "metrics": metrics,
         "start_date": start,
         "end_date": end,
     }
@@ -209,7 +222,7 @@ def build_campaign_record(item: dict, campaign_info: dict[str, dict]) -> dict:
     cid = str(item["dimensions"]["campaign_id"])
     m = item["metrics"]
     impressions = float(m.get("impressions") or 0)
-    return {
+    record = {
         "campaign_id": cid,
         "campaign_name": campaign_info.get(cid, {}).get("campaign_name", ""),
         "objective_type": campaign_info.get(cid, {}).get("objective_type", ""),
@@ -226,6 +239,11 @@ def build_campaign_record(item: dict, campaign_info: dict[str, dict]) -> dict:
         "conversions": m.get("conversion", "0"),
         "landing_page_views": m.get("total_landing_page_view", "0"),
     }
+    # Brand2Shop fields (present only when fetched with brand2shop template type)
+    for field in BRAND2SHOP_CAMPAIGN_METRICS:
+        if field in m:
+            record[field] = m[field]
+    return record
 
 
 def build_creative_record(item: dict, campaign_info: dict[str, dict], ad_details: dict[str, dict]) -> dict:
@@ -234,7 +252,7 @@ def build_creative_record(item: dict, campaign_info: dict[str, dict], ad_details
     cid = detail.get("campaign_id", "")
     m = item["metrics"]
     impressions = float(m.get("impressions") or 0)
-    return {
+    record = {
         "campaign_id": cid,
         "campaign_name": campaign_info.get(cid, {}).get("campaign_name", ""),
         "objective_type": campaign_info.get(cid, {}).get("objective_type", ""),
@@ -250,6 +268,10 @@ def build_creative_record(item: dict, campaign_info: dict[str, dict], ad_details
         "vtr_6s": safe_div(float(m.get("video_watched_6s") or 0), impressions),
         "engagement_rate": m.get("engagement_rate", "0"),
     }
+    for field in BRAND2SHOP_AD_METRICS:
+        if field in m:
+            record[field] = m[field]
+    return record
 
 
 def write_json(path: Path, data: list[dict], label: str) -> None:
@@ -259,9 +281,48 @@ def write_json(path: Path, data: list[dict], label: str) -> None:
     print(f"Wrote {label} JSON: {path}")
 
 
+def write_csv(path: Path, data: list[dict], label: str) -> None:
+    """Write a list of flat dicts to CSV. Column order follows the first record's key order."""
+    if not data:
+        print(f"No {label} data to write CSV.")
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # Union of all keys (preserving insertion order) so brand2shop extra fields are included
+    fieldnames = list(dict.fromkeys(k for record in data for k in record))
+    with path.open("w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(data)
+    print(f"Wrote {label} CSV:  {path}")
+
+
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
+
+BRAND2SHOP_CAMPAIGN_METRICS = [
+    # Confirmed valid against TikTok Business API v1.3
+    "complete_payment",             # Assisted Purchases
+    "complete_payment_rate",        # Purchase rate
+    "complete_payment_roas",        # Assisted ROAS
+    "total_active_pay_roas",        # Total active pay ROAS
+    "on_web_order",                 # Web orders
+    # TODO: map these once correct API field names are confirmed:
+    # "product_page_view_rate"      → Product Page View Rate (PDP VR)
+    # "new_shop_visitor"            → New Shop Visitors (90-day inactive)
+    # "assisted_new_shop_visitor"   → Assisted New Shop Visitors (90-day inactive)
+    # "cost_per_product_page_view"  → Assisted Cost Per Product Page View
+    # "assisted_complete_payment_value" → Assisted Gross Revenue
+]
+
+BRAND2SHOP_AD_METRICS = [
+    # Confirmed valid against TikTok Business API v1.3
+    "complete_payment",
+    "complete_payment_rate",
+    "complete_payment_roas",
+    "on_web_order",
+]
+
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -273,6 +334,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--start", required=True, help="Start date YYYY-MM-DD")
     parser.add_argument("--end", required=True, help="End date YYYY-MM-DD")
     parser.add_argument("--out", required=True, help="Base output path (e.g. output/report.json)")
+    parser.add_argument("--template-type", default="brand_objective",
+                        choices=["brand_objective", "brand2shop"],
+                        help="Report template type (default: brand_objective)")
     return parser.parse_args(argv)
 
 
@@ -283,6 +347,10 @@ def main(argv: list[str] | None = None) -> None:
     base = Path(args.out)
     campaigns_path = base.with_name(base.stem + "_campaigns.json")
     creatives_path = base.with_name(base.stem + "_creatives.json")
+    campaigns_csv_path = base.with_name(base.stem + "_campaigns.csv")
+    creatives_csv_path = base.with_name(base.stem + "_creatives.csv")
+
+    is_brand2shop = args.template_type == "brand2shop"
 
     print(f"Fetching campaign info for advertiser {args.advertiser_id}...")
     campaign_info = fetch_campaign_info(args.advertiser_id, args.campaign_ids, hdrs)
@@ -292,13 +360,15 @@ def main(argv: list[str] | None = None) -> None:
 
     print("Fetching campaign metrics...")
     campaign_metric_rows = fetch_campaign_metrics(
-        args.advertiser_id, args.campaign_ids, args.start, args.end, hdrs
+        args.advertiser_id, args.campaign_ids, args.start, args.end, hdrs,
+        extra_metrics=BRAND2SHOP_CAMPAIGN_METRICS if is_brand2shop else None,
     )
     print(f"  Got {len(campaign_metric_rows)} row(s)")
 
     print("Fetching creative (ad) metrics...")
     ad_rows = fetch_ad_metrics(
-        args.advertiser_id, args.campaign_ids, args.start, args.end, hdrs
+        args.advertiser_id, args.campaign_ids, args.start, args.end, hdrs,
+        extra_metrics=BRAND2SHOP_AD_METRICS if is_brand2shop else None,
     )
     print(f"  Got {len(ad_rows)} ad row(s)")
 
@@ -310,7 +380,9 @@ def main(argv: list[str] | None = None) -> None:
     creatives = [build_creative_record(r, campaign_info, ad_details) for r in ad_rows]
 
     write_json(campaigns_path, campaigns, "campaigns")
+    write_csv(campaigns_csv_path, campaigns, "campaigns")
     write_json(creatives_path, creatives, "creatives")
+    write_csv(creatives_csv_path, creatives, "creatives")
 
 
 if __name__ == "__main__":
